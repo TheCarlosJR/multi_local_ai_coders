@@ -65,9 +65,6 @@ LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
 # Exemplo: se falhar, tenta recuperar erro e refaz (até N vezes)
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
 
-# Se True, o Reviewer pode refinar o plano se resultado insatisfatório
-ENABLE_REFINEMENT_LOOP = True
-
 # ============================================================
 # SISTEMA DE ARQUIVOS
 # ============================================================
@@ -100,8 +97,65 @@ MEMORY_DB_PATH = Path(os.getenv(
 # Número de resultados para trazer em busca de similaridade
 MEMORY_TOP_K = int(os.getenv("MEMORY_TOP_K", "5"))
 
+# Limite máximo de documentos armazenados em ChromaDB
+# 0 = sem limite
+MEMORY_MAX_DOCUMENTS = int(os.getenv("MEMORY_MAX_DOCUMENTS", "5000"))
+
+# Limite máximo de tamanho do banco em MB
+# 0 = sem limite
+MEMORY_MAX_SIZE_MB = int(os.getenv("MEMORY_MAX_SIZE_MB", "500"))
+
+# Dias para reter documentos em memória (0 = indefinido)
+MEMORY_RETENTION_DAYS = int(os.getenv("MEMORY_RETENTION_DAYS", "30"))
+
 # Se False, desativa buscas por memória (acelera execução)
 ENABLE_MEMORY_RETRIEVAL = True
+
+# ============================================================
+# FEATURE TOGGLES - VALIDAÇÕES E AGENTES
+# ============================================================
+
+# Ativar validação de tipos (mypy para Python, tsc para TypeScript)
+ENABLE_TYPE_CHECKING = os.getenv("ENABLE_TYPE_CHECKING", "true").lower() == "true"
+
+# Ativar análise estática de código (pylint, flake8, bandit)
+ENABLE_STATIC_ANALYSIS = os.getenv("ENABLE_STATIC_ANALYSIS", "true").lower() == "true"
+
+# Ativar execução automática de testes (pytest, unittest, jest)
+ENABLE_TEST_EXECUTION = os.getenv("ENABLE_TEST_EXECUTION", "true").lower() == "true"
+
+# Se True, o Reviewer pode refinar o plano se resultado insatisfatório
+ENABLE_REFINEMENT_LOOP = os.getenv("ENABLE_REFINEMENT_LOOP", "true").lower() == "true"
+
+# Ativar recuperação automática de erros com análise de root cause
+ENABLE_ERROR_RECOVERY = os.getenv("ENABLE_ERROR_RECOVERY", "true").lower() == "true"
+
+# Ativar cache inteligente de snippets bem-sucedidos
+ENABLE_CACHE_SNIPPETS = os.getenv("ENABLE_CACHE_SNIPPETS", "true").lower() == "true"
+
+# Ativar aprendizado a partir de padrões de erro anterior
+ENABLE_ERROR_LEARNING = os.getenv("ENABLE_ERROR_LEARNING", "true").lower() == "true"
+
+# ============================================================
+# CACHE INTELIGENTE DE CÓDIGO
+# ============================================================
+
+# Threshold de similaridade para sugerir snippet do cache (0.0-1.0)
+# 0.85 = 85% similar (conservador, apenas muito parecidos)
+CACHE_REUSE_THRESHOLD = float(os.getenv("CACHE_REUSE_THRESHOLD", "0.85"))
+
+# ============================================================
+# CI/CD PIPELINE
+# ============================================================
+
+# Ativar pipeline CI/CD como gateway antes do agente executar
+CI_CD_ENABLED = os.getenv("CI_CD_ENABLED", "true").lower() == "true"
+
+# Porta para webhook de CI/CD (integração com GitHub Actions, GitLab CI)
+CI_CD_WEBHOOK_PORT = int(os.getenv("CI_CD_WEBHOOK_PORT", "5000"))
+
+# Detectar automaticamente pipeline files (.github/workflows, .gitlab-ci.yml)?
+CI_CD_AUTO_DETECT = os.getenv("CI_CD_AUTO_DETECT", "true").lower() == "true"
 
 # ============================================================
 # GIT

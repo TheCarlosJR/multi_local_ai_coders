@@ -22,7 +22,13 @@ from core.config import (
     logger,
 )
 from prompts.memory_retrieval_prompt import MEMORY_RETRIEVAL_PROMPT
-from vector_store.chromadb_store import ChromaDBStore
+
+try:
+    from vector_store.chromadb_store import ChromaDBStore
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    ChromaDBStore = None
+    CHROMADB_AVAILABLE = False
 
 log = logging.getLogger(__name__)
 

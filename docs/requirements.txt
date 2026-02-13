@@ -27,3 +27,89 @@ sentence-transformers>=2.2.0  # Alternativa local ao Ollama embeddings
 
 # Logging e monitoramento
 colorama>=0.4.6  # Cores no terminal Windows
+# ============================================================
+# NOVAS FEATURES (CI/CD, Type-checking, Tests, Refactoring)
+# ============================================================
+
+# CI/CD & Configuration
+PyYAML>=6.0  # Para parsing .github/workflows, .gitlab-ci.yml
+
+# Type Checking
+mypy>=1.0  # Static type checker for Python
+types-requests>=2.31.0  # Type hints para requests
+
+# Static Analysis
+pylint>=3.0  # Code analysis tool
+flake8>=6.0  # Code quality tool
+bandit>=1.7.5  # Security issue scanner
+
+# Testing
+pytest>=7.0  # Testing framework
+pytest-cov>=4.0  # Coverage plugin para pytest
+
+# AST-based Refactoring
+libcst>=0.4.0  # Concrete syntax tree parser para refactoring seguro
+
+# ============================================================
+# PHASE 9: Chat Interface & Continue.dev Integration
+# ============================================================
+
+fastapi>=0.109.0  # Web framework para API
+uvicorn>=0.27.0  # ASGI server para FastAPI
+httpx>=0.26.0  # HTTP client para testes
+
+# ============================================================
+# PHASE 8: Error Pattern Learning & Analysis
+# ============================================================
+
+radon>=6.0  # Complexity analysis tool
+
+# ============================================================
+# TIER 1: Multi-Language Support & Enterprise Features
+# ============================================================
+
+# Tree-sitter for unified AST parsing
+tree-sitter>=0.20.0
+tree-sitter-languages>=1.10.0
+
+# Observability & Structured Logging
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-jaeger>=1.20.0
+structlog>=24.1.0
+python-json-logger>=2.0.0
+
+# Retry with exponential backoff
+tenacity>=8.2.0
+
+# Token counting for context management
+tiktoken>=0.5.0
+
+# ============================================================
+# TIER 2: Context Management & Code Review Enhancement
+# ============================================================
+
+# Context windowing and token management (tiktoken already included)
+
+# Semantic compression - no additional deps needed
+
+# ============================================================
+# TIER 3: Production Continue.dev Integration
+# ============================================================
+
+# JWT authentication
+PyJWT>=2.8.0
+
+# Redis for session persistence (optional)
+redis>=5.0.0
+
+# WebSocket support
+websockets>=11.0.0
+
+# ============================================================
+# Optional: Development & Testing
+# ============================================================
+
+pytest-asyncio>=0.21.0  # Async test support
+black>=23.0.0  # Code formatter
+isort>=5.13.0  # Import sorter

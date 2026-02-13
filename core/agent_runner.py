@@ -3,13 +3,14 @@
 AGENT RUNNER - Orquestrador Principal
 ============================================================
 Responsabilidade:
-- Coordenar Planner → Executor → Reviewer
+- Coordenar CI/CD → Planner → Executor → Reviewer
 - Integrar memory retrieval (RAG)
 - Implementar retry logic
 - Refinement loop se necessário
 - Persistência de aprendizados
 
 Fluxo Completo:
+  0. CI/CD.validate_pre_execution() → quality gates (NOVO)
   1. Memory.recall_memory(goal) → contexto
   2. Planner.plan(goal, contexto) → PlanResponse
   3. Executor.execute(steps) → ExecutorResponse
@@ -22,9 +23,10 @@ Fluxo Completo:
 import logging
 from typing import Optional, Dict, Any
 
+from agents.ci_cd_agent import CICDAgent
 from agents.planner import PlannerAgent
-from agents.executor import ExecutorAgent
-from agents.reviewer import ReviewerAgent
+from agents.executor_v2 import ExecutorAgentV2
+from agents.reviewer_v2 import ReviewerAgentV2
 from agents.memory import MemoryAgent
 from core.models import (
     PlanResponse,
@@ -38,6 +40,7 @@ from core.config import (
     ENABLE_REFINEMENT_LOOP,
     ENABLE_MEMORY_RETRIEVAL,
     AUTO_COMMIT,
+    CI_CD_ENABLED,
     logger,
 )
 from core.llm import call_llm
@@ -53,13 +56,14 @@ class AgentRunner:
     def __init__(self):
         """Inicializa todos os agentes."""
         
+        self.ci_cd = CICDAgent()
         self.planner = PlannerAgent()
-        self.executor = ExecutorAgent()
-        self.reviewer = ReviewerAgent()
+        self.executor = ExecutorAgentV2()
+        self.reviewer = ReviewerAgentV2()
         self.memory = MemoryAgent()
         
         self.logger = logging.getLogger(__name__)
-        self.logger.info("✓ AgentRunner inicializado")
+        self.logger.info("✓ AgentRunner inicializado com v2 agents (parallelization + 6-criteria review)")
     
     def run(self, goal: str) -> Dict[str, Any]:
         """
@@ -78,6 +82,30 @@ class AgentRunner:
         
         # Inicializar contexto de execução
         context = ExecutionContext(goal=goal, plan=None)
+        
+        # ============================================================
+        # PHASE 0: CI/CD QUALITY GATES (NOVO)
+        # ============================================================
+        
+        pre_validation = None
+        if CI_CD_ENABLED:
+            self.logger.info("\n[PHASE 0] CI/CD Quality Gates...")
+            pre_validation = self.ci_cd.validate_pre_execution()
+            
+            if not pre_validation.success:
+                # Se tiver erros críticos, bloquear execução
+                self.logger.error("✗ CI/CD validation falhou")
+                return {
+                    "success": False,
+                    "error": "CI/CD quality gates falharam",
+                    "validation": pre_validation.model_dump(),
+                    "context": context.model_dump(),
+                }
+            
+            # Se tiver warnings, loggar mas continuar
+            if pre_validation.warnings:
+                for warning in pre_validation.warnings:
+                    self.logger.warning(f"  ⚠ {warning}")
         
         for attempt in range(MAX_RETRIES):
             self.logger.info(f"\n[ATTEMPT {attempt + 1}/{MAX_RETRIES}]")

@@ -16,17 +16,15 @@ from pathlib import Path
 
 try:
     import chromadb
+    CHROMADB_AVAILABLE = True
 except ImportError:
-    raise ImportError(
-        "ChromaDB não instalado. Execute: pip install chromadb"
-    )
+    CHROMADB_AVAILABLE = False
 
 try:
     import ollama
+    OLLAMA_AVAILABLE = True
 except ImportError:
-    raise ImportError(
-        "Ollama client não instalado. Execute: pip install ollama"
-    )
+    OLLAMA_AVAILABLE = False
 
 from core.config import logger
 
@@ -51,7 +49,20 @@ class ChromaDBStore:
             persist_directory: Diretório para salvar embeddings
             embedding_model: Modelo Ollama para embeddings
             collection_name: Nome da collection
+        
+        Raises:
+            ImportError: Se ChromaDB ou Ollama não estiverem instalados
         """
+        
+        if not CHROMADB_AVAILABLE:
+            raise ImportError(
+                "ChromaDB não instalado. Execute: pip install chromadb"
+            )
+        
+        if not OLLAMA_AVAILABLE:
+            raise ImportError(
+                "Ollama client não instalado. Execute: pip install ollama"
+            )
         
         self.logger = logging.getLogger(__name__)
         self.embedding_model = embedding_model
@@ -251,4 +262,176 @@ class ChromaDBStore:
         except Exception as e:
             self.logger.error(f"Erro ao obter stats: {e}")
             return {}
+    
+    # ============================================================
+    # CONTROLE DE LIMITES (ChromaDB Management)
+    # ============================================================
+    
+    def enforce_document_limit(self, max_documents: int) -> int:
+        """
+        Enforce máximo de documentos mantendo os mais recentes.
+        Remove documentos antigos se ultrapassar limite.
+        
+        Args:
+            max_documents: Máximo de documentos permitido
+        
+        Returns:
+            Número de documentos removidos
+        """
+        if max_documents <= 0:
+            return 0
+        
+        try:
+            results = self.collection.get()
+            current_count = len(results.get("ids", []))
+            
+            if current_count <= max_documents:
+                return 0
+            
+            # Número de docs a remover
+            to_remove_count = current_count - max_documents
+            
+            # IDs dos documentos (assumindo ordem de inserção)
+            all_ids = results.get("ids", [])
+            ids_to_remove = all_ids[:to_remove_count]
+            
+            if ids_to_remove:
+                self.collection.delete(ids=ids_to_remove)
+                self.client.persist()
+                self.logger.info(
+                    f"✓ Limit enforcement: removidos {len(ids_to_remove)} docs "
+                    f"({current_count} → {max_documents})"
+                )
+            
+            return len(ids_to_remove)
+        
+        except Exception as e:
+            self.logger.error(f"Erro ao enforce limit: {e}")
+            return 0
+    
+    def cleanup_old_documents(self, retention_days: int = 30) -> int:
+        """
+        Remove documentos não acessados há mais de X dias.
+        
+        Args:
+            retention_days: Dias para manter documentos
+        
+        Returns:
+            Número de documentos removidos
+        """
+        if retention_days <= 0:
+            return 0
+        
+        try:
+            from datetime import datetime, timedelta
+            
+            results = self.collection.get(include=["metadatas"])
+            ids = results.get("ids", [])
+            metadatas = results.get("metadatas", [])
+            
+            cutoff_date = datetime.now() - timedelta(days=retention_days)
+            ids_to_remove = []
+            
+            for doc_id, metadata in zip(ids, metadatas):
+                if metadata:
+                    # Tentar obter data de criação/acesso
+                    created_at_str = metadata.get("created_at")
+                    
+                    if created_at_str:
+                        try:
+                            created_at = datetime.fromisoformat(created_at_str)
+                            if created_at < cutoff_date:
+                                ids_to_remove.append(doc_id)
+                        except:
+                            pass
+            
+            if ids_to_remove:
+                self.collection.delete(ids=ids_to_remove)
+                self.client.persist()
+                self.logger.info(
+                    f"✓ Cleanup: removidos {len(ids_to_remove)} docs antigos"
+                )
+            
+            return len(ids_to_remove)
+        
+        except Exception as e:
+            self.logger.error(f"Erro ao fazer cleanup: {e}")
+            return 0
+    
+    def get_storage_size_mb(self) -> float:
+        """
+        Retorna tamanho do banco de dados em MB.
+        
+        Returns:
+            Tamanho em MB
+        """
+        try:
+            from pathlib import Path
+            
+            # Encontrar diretório do ChromaDB
+            # Isso é aproximado - depende da estrutura interna do ChromaDB
+            persist_path = getattr(self.client, "_path", None)
+            
+            if persist_path and Path(persist_path).exists():
+                total_size = 0
+                for item in Path(persist_path).rglob("*"):
+                    if item.is_file():
+                        total_size += item.stat().st_size
+                
+                return total_size / (1024 * 1024)
+        
+        except Exception as e:
+            self.logger.debug(f"Erro ao calcular tamanho: {e}")
+        
+        return 0.0
+    
+    def check_limits(
+        self,
+        max_documents: int = 5000,
+        max_size_mb: float = 500.0,
+    ) -> dict:
+        """
+        Verifica se limites estão sendo respeitados.
+        
+        Args:
+            max_documents: Máximo de documentos
+            max_size_mb: Máximo de tamanho em MB
+        
+        Returns:
+            Dict com status dos limites
+        """
+        try:
+            results = self.collection.get()
+            doc_count = len(results.get("ids", []))
+            size_mb = self.get_storage_size_mb()
+            
+            status = {
+                "document_count": doc_count,
+                "size_mb": size_mb,
+                "limits": {
+                    "max_documents": max_documents,
+                    "max_size_mb": max_size_mb,
+                },
+                "status": {
+                    "documents_ok": doc_count <= max_documents if max_documents > 0 else True,
+                    "size_ok": size_mb <= max_size_mb if max_size_mb > 0 else True,
+                },
+            }
+            
+            if not status["status"]["documents_ok"]:
+                self.logger.warning(
+                    f"⚠ Document limit exceeded: {doc_count} > {max_documents}"
+                )
+            
+            if not status["status"]["size_ok"]:
+                self.logger.warning(
+                    f"⚠ Size limit exceeded: {size_mb:.1f}MB > {max_size_mb}MB"
+                )
+            
+            return status
+        
+        except Exception as e:
+            self.logger.error(f"Erro ao verificar limites: {e}")
+            return {}
+
 

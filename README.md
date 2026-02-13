@@ -147,8 +147,18 @@ python main.py "seu objetivo"
 
 ```
 ┌─────────────────────────────────────────────────────────┐
+│ 0. CI/CD PRE-EXECUTION VALIDATION (NEW - PHASE 0)       │
+│    - Type Checking (mypy, tsc)                          │
+│    - Static Analysis (pylint, flake8, bandit)           │
+│    - Test Execution & Coverage                          │
+│    - Custom Quality Gates                               │
+│    → BLOQUEADO se falhar                                │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
 │ 1. MEMORY RETRIEVAL (RAG)                               │
 │    - Busca memória por similaridade semântica           │
+│    - Error patterns from history                        │
 │    - Injeta contexto de execuções anteriores            │
 └─────────────────────────────────────────────────────────┘
                           ↓
@@ -163,15 +173,22 @@ python main.py "seu objetivo"
 │ 3. EXECUTOR (Agente Executor)                           │
 │    - Executa cada step sequencialmente                  │
 │    - Chama tools: Filesystem, Terminal, Git, Web        │
-│    - Em erro: error_recovery_prompt para análise        │
+│    - Em erro: error_recovery_prompt + pattern matching  │
 │    - Retorna: ExecutorResponse com histórico            │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │ 4. REVIEWER (Agente Revisor)                            │
 │    - Analisa resultado contra objetivo                  │
-│    - Detecta: bugs, segurança, incompletude             │
+│    - Testes de validação, segurança, completude         │
 │    - Retorna: ReviewResponse (APPROVED/NEEDS_REF/FAIL)  │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 5. LEARNING (Novo - PHASE 8)                            │
+│    - Registra padrões de erro e soluções (RAG)          │
+│    - Atualiza cache de snippets bem-sucedidos           │
+│    - Treina estratégias de recuperação                  │
 └─────────────────────────────────────────────────────────┘
                           ↓
                     ┌─────────┐
@@ -829,7 +846,93 @@ type debug.log
 
 ---
 
-**Última atualização:** 11 Feb 2026  
+## 💬 Chat Interface (Continue.dev Integration) - PHASE 9
+
+O agente agora suporta **dual-mode**:
+
+### Modo 1: Batch (Existente)
+```bash
+python main.py "seu objetivo"
+```
+
+### Modo 2: Chat Interface (Novo)
+Integração com Continue.dev IDE plugin via HTTP API:
+
+```bash
+# Terminal 1: Inicia servidor chat
+python -c "from core.chat_interface import run_interactive; run_interactive()"
+
+# Terminal 2: Use Continue.dev ou teste manualmente
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Crie arquivo hello.py"}'
+```
+
+**Endpoints disponíveis:**
+- `POST /api/chat` - Enviar mensagem ao agente
+- `GET /api/status` - Status do agente
+- `POST /api/session/new` - Criar nova sessão
+- `GET /api/session/{id}` - Ver histórico da sessão
+- `GET /docs` - Documentação interativa (Swagger UI)
+
+---
+
+## 📊 Error Pattern Learning - PHASE 8
+
+O sistema agora **aprende com erros** e sugere correções automáticas:
+
+### Como funciona:
+1. **Detecção**: Quando um erro ocorre, o sistema identifica o padrão
+2. **Análise**: Compara com erros anteriores no histórico RAG
+3. **Sugestão**: Propõe solução baseada em sucesso anterior
+4. **Aprendizado**: Registra solução e incrementa taxa de sucesso
+
+### Visualizar padrões aprendidos:
+```bash
+python -c "from agents.error_pattern_agent import ErrorPatternAgent; agent = ErrorPatternAgent(); print(agent.get_top_recurring_errors(10))"
+```
+
+---
+
+## 🧪 Executar Testes - PHASE 10
+
+Suite abrangente de testes para todos os agentes:
+
+```bash
+# Rodar todos os testes
+pytest tests/ -v
+
+# Testes específicos por agent
+pytest tests/test_new_agents.py::TestCICDAgent -v
+pytest tests/test_new_agents.py::TestErrorPatternAgent -v
+
+# Com cobertura de código
+pytest tests/ --cov=agents --cov=core --cov-report=html
+```
+
+---
+
+## 📁 Novos Arquivos - PHASES 2-10
+
+| Arquivo | Linhas | Fase | Propósito |
+|---------|--------|------|----------|
+| `agents/ci_cd_agent.py` | 480 | 2 | Quality gates pré-execução |
+| `agents/type_checker_agent.py` | 350 | 3 | Type checking (mypy) |
+| `agents/ast_refactorer_agent.py` | 400 | 3 | Refactoring seguro |
+| `agents/test_agent.py` | 380 | 4 | Execução de testes |
+| `agents/cache_agent.py` | 280 | 5 | Cache de snippets |
+| `agents/static_analysis_agent.py` | 420 | 6 | Análise estática |
+| `agents/error_pattern_agent.py` | 480 | 8 | Learning de padrões |
+| `core/chat_interface.py` | 500 | 9 | HTTP API Continue.dev |
+| `prompts/error_pattern_prompt.py` | 250 | 8 | Prompts erro |
+| `tools/cicd_tool.py` | 250 | 2 | Helper CI/CD |
+| `tests/test_new_agents.py` | 650 | 10 | Suite testes |
+
+**Total:** ~4,000 linhas de código novo
+
+---
+
+
 **Status:** ✅ Funcional e pronto para produção  
 **Versão:** 1.0 - Production Ready
 
