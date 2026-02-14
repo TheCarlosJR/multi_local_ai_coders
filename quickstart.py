@@ -9,7 +9,6 @@ import sys
 import os
 from pathlib import Path
 
-
 def print_step(step_num, title, description=""):
     """Imprime um step formatado."""
     print(f"\n{'='*60}")
@@ -137,7 +136,7 @@ def main():
         print("    ✓ core OK")
         
         print("  - Importando agents...")
-        from agents import planner, executor, reviewer, memory
+        from agents import reviewer_agent, executor_agent, memory_agent, planner_agent
         print("    ✓ agents OK")
         
         print("  - Importando tools...")

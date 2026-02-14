@@ -76,7 +76,7 @@ To: Production-ready system with 15+ language support, parallel execution,
    - Normalized diagnostic format across all tools
    - Severity mapping and categorization
 
-6. **agents/executor_v2.py** (400 lines)
+6. **agents/executor.py** (400 lines)
    - Complete rewrite for parallelization
    - DAG (directed acyclic graph) analysis
    - Topological sort for dependency resolution
@@ -150,7 +150,7 @@ To: Production-ready system with 15+ language support, parallel execution,
    - Impact zone analysis (what files affected by change)
    - PageRank-like importance scoring
 
-5. **agents/reviewer_v2.py** (300 lines)
+5. **agents/reviewer.py** (300 lines)
    - 6-criteria code review (vs 3 before)
      1. Functional: Does it meet requirement?
      2. Security: No vulnerabilities?
@@ -373,8 +373,8 @@ CMD ["python", "run_server.py", "--env", "production"]
 
 ### What Changed (V2 Consolidation)
 
-- **executor.py**: ❌ REMOVED - Use ExecutorAgentV2 (built-in parallelization)
-- **reviewer.py**: ❌ REMOVED - Use ReviewerAgentV2 (built-in 6 criteria)
+- **executor.py**: ❌ REMOVED - Use ExecutorAgent (built-in parallelization)
+- **reviewer.py**: ❌ REMOVED - Use ReviewerAgent (built-in 6 criteria)
 - **chat_interface.py**: Original preserved. New chat_interface_v2 is production version
 
 ### What's Compatible
@@ -388,11 +388,11 @@ CMD ["python", "run_server.py", "--env", "production"]
 
 ```python
 # All imports now use v2 directly
-from agents.executor_v2 import ExecutorAgentV2
-from agents.reviewer_v2 import ReviewerAgentV2
+from agents.executor import ExecutorAgent
+from agents.reviewer import ReviewerAgent
 
-executor = ExecutorAgentV2()    # 40% faster with parallelization
-reviewer = ReviewerAgentV2()    # 6 criteria evaluation
+executor = ExecutorAgent()    # 40% faster with parallelization
+reviewer = ReviewerAgent()    # 6 criteria evaluation
 ```
 
 # ============================================================

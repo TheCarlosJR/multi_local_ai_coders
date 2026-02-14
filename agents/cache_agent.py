@@ -21,7 +21,7 @@ import json
 
 from core.config import logger, PROJECT_ROOT, CACHE_REUSE_THRESHOLD, ENABLE_CACHE_SNIPPETS
 from core.models import CodeSnippet, CacheEntry
-from agents.memory import MemoryAgent
+from agents.memory_agent import MemoryAgent
 
 
 class CacheAgent:
@@ -52,7 +52,7 @@ class CacheAgent:
                             "snippet": snippet,
                             "last_used": entry.get("last_used", ""),
                         }
-                    except:
+                    except (TypeError, ValueError, KeyError):
                         pass
         except Exception as e:
             self.logger.warning(f"Erro ao carregar cache: {str(e)}")
@@ -314,7 +314,7 @@ class CacheAgent:
                         last_used = datetime.fromisoformat(last_used_str)
                         if last_used < cutoff_date:
                             snippets_to_remove.append(snippet_id)
-                    except:
+                    except (ValueError, TypeError):
                         pass
             
             for snippet_id in snippets_to_remove:

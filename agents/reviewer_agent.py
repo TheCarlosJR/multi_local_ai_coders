@@ -47,7 +47,7 @@ class CriterionScore:
     suggestions: List[str]
 
 
-class ReviewerAgentV2:
+class ReviewerAgent:
     """Enhanced code review with multi-criteria evaluation."""
     
     REVIEW_PROMPTS = {

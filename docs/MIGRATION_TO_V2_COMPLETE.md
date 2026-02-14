@@ -10,14 +10,14 @@
 
 ### Files Modified (3)
 1. **core/agent_runner.py**
-   - ✅ Changed import: `ExecutorAgent` → `ExecutorAgentV2`
-   - ✅ Changed import: `ReviewerAgent` → `ReviewerAgentV2`
+   - ✅ Changed import: `ExecutorAgent` → `ExecutorAgent`
+   - ✅ Changed import: `ReviewerAgent` → `ReviewerAgent`
    - ✅ Updated `__init__` to instantiate v2 agents
    - ✅ Updated log message with new features
 
 2. **agents/__init__.py**
-   - ✅ Changed export: `ExecutorAgent` → `ExecutorAgentV2`
-   - ✅ Changed export: `ReviewerAgent` → `ReviewerAgentV2`
+   - ✅ Changed export: `ExecutorAgent` → `ExecutorAgent`
+   - ✅ Changed export: `ReviewerAgent` → `ReviewerAgent`
    - ✅ Updated `__all__` list
 
 3. **verify_cleanup.py**
@@ -73,19 +73,19 @@ reviewer = ReviewerAgent()
 
 ### New Code (Recommended)
 ```python
-from agents.executor_v2 import ExecutorAgentV2
-from agents.reviewer_v2 import ReviewerAgentV2
+from agents.executor import ExecutorAgent
+from agents.reviewer import ReviewerAgent
 
-executor = ExecutorAgentV2()    # 40% faster
-reviewer = ReviewerAgentV2()    # 6 criteria
+executor = ExecutorAgent()    # 40% faster
+reviewer = ReviewerAgent()    # 6 criteria
 ```
 
 ### Via agents package (Also Works)
 ```python
-from agents import ExecutorAgentV2, ReviewerAgentV2
+from agents import ExecutorAgent, ReviewerAgent
 
-executor = ExecutorAgentV2()
-reviewer = ReviewerAgentV2()
+executor = ExecutorAgent()
+reviewer = ReviewerAgent()
 ```
 
 ---
@@ -101,15 +101,15 @@ reviewer = ReviewerAgentV2()
 
 ### Import Check
 ```
-✅ ExecutorAgentV2 properly imported in agent_runner.py
-✅ ReviewerAgentV2 properly imported in agent_runner.py
+✅ ExecutorAgent properly imported in agent_runner.py
+✅ ReviewerAgent properly imported in agent_runner.py
 ✅ Both agents exported from agents/__init__.py
 ```
 
 ### Functional Test
 ```
-✅ from agents.executor_v2 import ExecutorAgentV2
-✅ from agents.reviewer_v2 import ReviewerAgentV2
+✅ from agents.executor import ExecutorAgent
+✅ from agents.reviewer import ReviewerAgent
 ✅ from core.agent_runner import AgentRunner
 ✅ AgentRunner.__init__() creates v2 agents
 ```
@@ -126,8 +126,8 @@ reviewer = ReviewerAgentV2()
              ▼
 ┌─────────────────────────────────────┐
 │  core/agent_runner.py               │
-│  - Uses ExecutorAgentV2             │
-│  - Uses ReviewerAgentV2             │
+│  - Uses ExecutorAgent             │
+│  - Uses ReviewerAgent             │
 └────────────┬────────────────────────┘
              │
        ┌─────┴─────┐
@@ -179,8 +179,8 @@ from agents.reviewer import ReviewerAgent
 
 Update to:
 ```python
-from agents.executor_v2 import ExecutorAgentV2
-from agents.reviewer_v2 import ReviewerAgentV2
+from agents.executor import ExecutorAgent
+from agents.reviewer import ReviewerAgent
 ```
 
 All functionality is the same or better. Full v2 documentation available in:
@@ -214,8 +214,8 @@ All functionality is the same or better. Full v2 documentation available in:
 | agents/__init__.py | ✅ Updated | Exports v2 only |
 | agents/executor.py | ❌ Deleted | Was v1 wrapper |
 | agents/reviewer.py | ❌ Deleted | Was v1 wrapper |
-| agents/executor_v2.py | ✅ Active | Parallel execution |
-| agents/reviewer_v2.py | ✅ Active | 6-criteria review |
+| agents/executor.py | ✅ Active | Parallel execution |
+| agents/reviewer.py | ✅ Active | 6-criteria review |
 | verify_cleanup.py | ✅ Updated | Validates v2 setup |
 | docs/IMPLEMENTATION_SUMMARY.md | ✅ Updated | Reflects v2 only |
 

@@ -26,15 +26,15 @@ from core.models import (
     ToolCall,
     ToolType,
 )
-from core.config import logger
+from core.config import logger, EXECUTOR_MAX_WORKERS, EXECUTOR_STEP_TIMEOUT
 from core.observability import create_span
 from prompts.executor_prompt import EXECUTOR_PROMPT
 from prompts.error_recovery_prompt import ERROR_RECOVERY_PROMPT
 from tools import filesystem_tool, terminal_tool, git_tool, web_tool
-from agents.memory import MemoryAgent
+from agents.memory_agent import MemoryAgent
 
 
-class ExecutorAgentV2:
+class ExecutorAgent:
     """
     Versão 2: Executor com paralelização e dependency resolution.
     
@@ -48,9 +48,9 @@ class ExecutorAgentV2:
         ToolType.WEB: web_tool,
     }
     
-    # Config
-    MAX_WORKERS = 4  # Threads para paralelização
-    STEP_TIMEOUT = 300  # 5 min por step
+    # Config (from .env via config.py)
+    MAX_WORKERS = EXECUTOR_MAX_WORKERS
+    STEP_TIMEOUT = EXECUTOR_STEP_TIMEOUT
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)

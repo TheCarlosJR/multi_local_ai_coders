@@ -156,9 +156,9 @@ all_diags = diagnostics.analyze_directory("src/")
 The new Executor V2 automatically parallelizes independent steps:
 
 ```python
-from agents.executor_v2 import ExecutorAgentV2
+from agents.executor import ExecutorAgent
 
-executor = ExecutorAgentV2()
+executor = ExecutorAgent()
 response = executor.execute(plan_steps)
 
 # Output shows:
@@ -232,9 +232,9 @@ analyzer.save_metadata(metadata)
 Multi-criteria evaluation (functi, security, performance, etc):
 
 ```python
-from agents.reviewer_v2 import ReviewerAgentV2
+from agents.reviewer import ReviewerAgent
 
-reviewer = ReviewerAgentV2()
+reviewer = ReviewerAgent()
 
 review = reviewer.review(
     goal="Create FastAPI endpoint",

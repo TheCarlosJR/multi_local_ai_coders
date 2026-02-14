@@ -1,421 +1,569 @@
 """
-PHASE 9: Chat Interface for Continue.dev Integration
+Continue.dev Integration - Production Ready API
 
-Dual-mode support for:
-1. Batch execution (existing): python main.py "goal"
-2. Chat interface (new): HTTP API for Continue.dev IDE plugin
+Features:
+- JWT authentication with optional API keys
+- WebSocket for streaming responses
+- Redis-backed session persistence (optional)
+- Rate limiting per user
+- Graceful error handling
+- OpenTelemetry observability
+- Cost tracking per request
 
-Allows running agent as interactive service while keeping batch mode.
+Installation:
+    pip install fastapi uvicorn websockets redis pyjwt python-multipart
 """
 
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-from pathlib import Path
 import json
-import asyncio
+import logging
+from typing import Optional, Dict, Any, List, AsyncGenerator
+from datetime import datetime, timedelta
+from pathlib import Path
 from enum import Enum
+import asyncio
+import uuid
+from functools import wraps
 
 try:
-    from fastapi import FastAPI, HTTPException, BackgroundTasks
+    from fastapi import FastAPI, HTTPException, WebSocket, Depends, Header, BackgroundTasks
     from fastapi.middleware.cors import CORSMiddleware
-    from pydantic import BaseModel
+    from fastapi.responses import JSONResponse
     import uvicorn
+    import jwt
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
 
-from core.agent_runner import AgentRunner
-from core.config import PROJECT_ROOT
+# BaseModel is always needed for data models
+from pydantic import BaseModel, Field
 
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+
+from core.agent_runner import AgentRunner
+from core.config import PROJECT_ROOT, DEFAULT_API_KEY, ENABLE_INLINE_COMPLETION, COMPLETION_MAX_SUGGESTIONS
+from core.observability import SpanDecorator, create_span
+from core.structured_logger import get_logger
+from core.llm import get_code_completions
+
+logger = get_logger(__name__)
+
+
+# ============================================================
+# DATA MODELS
+# ============================================================
 
 class ChatMessage(BaseModel):
-    """Single chat message."""
+    """Chat message."""
     role: str  # "user" or "assistant"
     content: str
     timestamp: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
-    """Chat API request."""
-    message: str
+    """Chat request."""
+    message: str = Field(..., min_length=1, max_length=10000)
     session_id: Optional[str] = None
-    context: Optional[Dict] = None
+    context: Optional[Dict[str, Any]] = None
 
 
 class ChatResponse(BaseModel):
-    """Chat API response."""
+    """Chat response."""
     session_id: str
     message: str
     status: str  # "thinking", "executing", "completed", "error"
-    result: Optional[Dict] = None
+    result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     timestamp: str
+    tokens_used: Dict[str, int] = Field(default_factory=dict)
+
+
+class CompletionRequest(BaseModel):
+    """Inline completion request (for Continue.dev)."""
+    file_path: str
+    content: str
+    line: int
+    column: int
+    prefix: Optional[str] = None
+
+
+class CompletionResponse(BaseModel):
+    """Inline completion response."""
+    completions: List[str]
+    scores: List[float]  # Confidence scores
 
 
 class SessionMode(str, Enum):
-    """Session execution mode."""
-    BATCH = "batch"  # Single execution
-    INTERACTIVE = "interactive"  # Multi-turn chat
+    """Session mode."""
+    BATCH = "batch"
+    INTERACTIVE = "interactive"
 
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+
+class TokenManager:
+    """Manage JWT tokens and API keys."""
+    
+    def __init__(self, secret_key: str, algorithm: str = "HS256"):
+        self.secret_key = secret_key
+        self.algorithm = algorithm
+        self.logger = get_logger(__name__)
+    
+    def create_token(
+        self,
+        subject: str,
+        expires_delta: Optional[timedelta] = None,
+    ) -> str:
+        """Create JWT token."""
+        
+        if expires_delta is None:
+            expires_delta = timedelta(hours=24)
+        
+        expire = datetime.utcnow() + expires_delta
+        
+        payload = {
+            "sub": subject,
+            "exp": expire,
+            "iat": datetime.utcnow(),
+        }
+        
+        token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+        return token
+    
+    def verify_token(self, token: str) -> Optional[str]:
+        """Verify JWT token and return subject."""
+        
+        try:
+            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            return payload.get("sub")
+        except jwt.InvalidTokenError as e:
+            self.logger.warning(f"Invalid token: {e}")
+            return None
+
+
+# ============================================================
+# RATE LIMITING
+# ============================================================
+
+class RateLimiter:
+    """Rate limiting per user."""
+    
+    def __init__(self, max_requests: int = 100, window_seconds: int = 3600):
+        """
+        Initialize rate limiter.
+        
+        Args:
+            max_requests: Max requests per window
+            window_seconds: Time window in seconds
+        """
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests: Dict[str, List[datetime]] = {}
+    
+    def is_allowed(self, user_id: str) -> bool:
+        """Check if user can make request."""
+        
+        now = datetime.utcnow()
+        
+        if user_id not in self.requests:
+            self.requests[user_id] = []
+        
+        # Remove old timestamps
+        window_start = now - timedelta(seconds=self.window_seconds)
+        self.requests[user_id] = [
+            ts for ts in self.requests[user_id]
+            if ts > window_start
+        ]
+        
+        # Check limit
+        if len(self.requests[user_id]) >= self.max_requests:
+            return False
+        
+        # Record this request
+        self.requests[user_id].append(now)
+        return True
+    
+    def get_remaining(self, user_id: str) -> int:
+        """Get remaining requests in current window."""
+        
+        return max(0, self.max_requests - len(self.requests.get(user_id, [])))
+
+
+# ============================================================
+# SESSION MANAGER
+# ============================================================
 
 class AgentSession:
-    """Manages a chat session with the agent."""
+    """Manages chat session."""
     
-    def __init__(self, session_id: str, mode: SessionMode = SessionMode.INTERACTIVE):
+    def __init__(
+        self,
+        session_id: str,
+        user_id: str,
+        mode: SessionMode = SessionMode.INTERACTIVE,
+    ):
         self.session_id = session_id
+        self.user_id = user_id
         self.mode = mode
         self.messages: List[ChatMessage] = []
-        self.created_at = datetime.now()
+        self.created_at = datetime.utcnow()
+        self.last_activity = datetime.utcnow()
         self.runner = AgentRunner()
-        self.current_execution = None
-        self.execution_history = []
+        self.cost_tokens = 0
     
     def add_message(self, role: str, content: str) -> ChatMessage:
-        """Add message to conversation history."""
+        """Add message to session."""
         msg = ChatMessage(
             role=role,
             content=content,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.utcnow().isoformat(),
         )
         self.messages.append(msg)
+        self.last_activity = datetime.utcnow()
         return msg
     
     async def execute_goal(self, goal: str) -> Dict[str, Any]:
-        """
-        Execute a goal and return result.
+        """Execute goal asynchronously."""
         
-        Args:
-            goal: Task/objective for the agent
+        self.add_message("user", goal)
         
-        Returns:
-            Execution result with status and output
-        """
         try:
-            # Record in conversation
-            self.add_message("user", goal)
-            
-            # Run agent
+            # Run in thread to not block
             result = await asyncio.to_thread(self.runner.run, goal)
             
-            # Record execution
-            self.execution_history.append({
-                "goal": goal,
-                "result": result,
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            # Extract result message
-            result_msg = self._format_result(result)
-            self.add_message("assistant", result_msg)
+            self.add_message("assistant", str(result))
             
             return {
-                "success": True,
+                "status": "completed",
                 "result": result,
-                "message": result_msg
             }
         
         except Exception as e:
-            error_msg = f"Error executing goal: {str(e)}"
-            self.add_message("assistant", error_msg)
+            error_msg = str(e)
+            self.add_message("assistant", f"Error: {error_msg}")
+            
             return {
-                "success": False,
-                "error": str(e),
-                "message": error_msg
+                "status": "error",
+                "error": error_msg,
             }
     
-    def _format_result(self, result: Dict) -> str:
-        """Format execution result as readable message."""
-        if isinstance(result, dict):
-            success = result.get("success", False)
-            goal = result.get("goal", "Task")
-            output = result.get("result", result.get("message", "Completed"))
-            
-            if success:
-                return f"✓ {goal}\n\n**Result**: {output}"
-            else:
-                return f"✗ {goal}\n\n**Error**: {output}"
-        
-        return str(result)
-    
-    def get_history(self) -> List[ChatMessage]:
-        """Get conversation history."""
-        return self.messages
-    
     def to_dict(self) -> Dict:
-        """Convert session to dictionary."""
+        """Convert session to dict."""
+        
         return {
             "session_id": self.session_id,
+            "user_id": self.user_id,
             "mode": self.mode.value,
             "created_at": self.created_at.isoformat(),
-            "message_count": len(self.messages),
-            "execution_count": len(self.execution_history),
-            "messages": [
-                {
-                    "role": msg.role,
-                    "content": msg.content,
-                    "timestamp": msg.timestamp
-                }
-                for msg in self.messages
-            ]
+            "last_activity": self.last_activity.isoformat(),
+            "messages_count": len(self.messages),
+            "cost_tokens": self.cost_tokens,
         }
 
 
-class ChatInterface:
-    """
-    Manages chat sessions and integrates with agent runner.
+# ============================================================
+# API SERVER
+# ============================================================
+
+class ContinueDEVServer:
+    """FastAPI server for Continue.dev integration."""
     
-    Provides both:
-    - HTTP API for Continue.dev
-    - Programmatic interface for direct use
-    """
-    
-    def __init__(self, host: str = "127.0.0.1", port: int = 8000):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        secret_key: str = "your-secret-key-change-in-production",
+        enable_auth: bool = True,
+        enable_redis: bool = False,
+    ):
+        if not FASTAPI_AVAILABLE:
+            raise ImportError("FastAPI not installed. pip install fastapi uvicorn")
+        
         self.host = host
         self.port = port
-        self.sessions: Dict[str, AgentSession] = {}
-        self.session_counter = 0
+        self.enable_auth = enable_auth
+        self.enable_redis = enable_redis and REDIS_AVAILABLE
+        self.logger = get_logger(__name__)
         
-        # Initialize FastAPI if available
-        self.app = None
-        if FASTAPI_AVAILABLE:
-            self._setup_fastapi()
-    
-    def _setup_fastapi(self):
-        """Setup FastAPI application with routes."""
+        # Initialize FastAPI
         self.app = FastAPI(
-            title="AI Agent Chat Interface",
-            description="Chat API for AI Agent integration with Continue.dev",
-            version="1.0"
+            title="Multi-Local AI Coders",
+            description="Local AI agent for Continue.dev",
+            version="1.0.0",
         )
         
-        # Add CORS middleware
+        # Middleware
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=["*"],  # Restrict in production
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
         
-        # Define routes
-        @self.app.post("/api/chat", response_model=ChatResponse)
-        async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks):
-            """Chat endpoint for Continue.dev integration."""
-            return await self.handle_chat(
-                request.message,
-                request.session_id,
-                background_tasks
-            )
+        # Setup
+        self.token_manager = TokenManager(secret_key)
+        self.rate_limiter = RateLimiter()
+        self.sessions: Dict[str, AgentSession] = {}
         
-        @self.app.get("/api/status")
-        async def status_endpoint():
-            """Get agent status."""
-            return {
-                "status": "operational",
-                "sessions_active": len(self.sessions),
-                "timestamp": datetime.now().isoformat()
-            }
+        # Redis (optional)
+        self.redis_client = None
+        if self.enable_redis:
+            try:
+                self.redis_client = redis.Redis(
+                    host="localhost",
+                    port=6379,
+                    db=0,
+                    decode_responses=True,
+                )
+                self.redis_client.ping()
+                self.logger.info("✓ Redis connected")
+            except Exception as e:
+                self.logger.warning(f"Redis connection failed: {e}")
+                self.redis_client = None
         
-        @self.app.post("/api/session/new")
-        async def new_session_endpoint():
-            """Create new chat session."""
-            session_id = self._create_session()
-            return {
-                "session_id": session_id,
-                "created_at": datetime.now().isoformat()
-            }
-        
-        @self.app.get("/api/session/{session_id}")
-        async def get_session_endpoint(session_id: str):
-            """Get session details and history."""
-            session = self.sessions.get(session_id)
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            return session.to_dict()
-        
-        @self.app.get("/api/session/{session_id}/history")
-        async def get_history_endpoint(session_id: str):
-            """Get conversation history."""
-            session = self.sessions.get(session_id)
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            return {
-                "session_id": session_id,
-                "messages": [
-                    {
-                        "role": msg.role,
-                        "content": msg.content,
-                        "timestamp": msg.timestamp
-                    }
-                    for msg in session.get_history()
-                ]
-            }
-        
-        @self.app.delete("/api/session/{session_id}")
-        async def delete_session_endpoint(session_id: str):
-            """End a session."""
-            if session_id in self.sessions:
-                del self.sessions[session_id]
-                return {"status": "deleted", "session_id": session_id}
-            raise HTTPException(status_code=404, detail="Session not found")
+        self._setup_routes()
     
-    async def handle_chat(self, message: str, session_id: Optional[str],
-                         background_tasks: Optional[BackgroundTasks] = None) -> ChatResponse:
-        """
-        Handle incoming chat message.
+    def _setup_routes(self):
+        """Setup API routes."""
         
-        Args:
-            message: User message
-            session_id: Session ID (creates new if None)
-            background_tasks: FastAPI BackgroundTasks
+        @self.app.post("/api/v1/login")
+        async def login(credentials: Dict[str, str]):
+            """Login with API key or credentials."""
+            
+            api_key = credentials.get("api_key")
+            
+            # Validate
+            if not api_key or api_key != DEFAULT_API_KEY:
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+            
+            user_id = credentials.get("user_id", "default_user")
+            token = self.token_manager.create_token(user_id)
+            
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "user_id": user_id,
+            }
         
-        Returns:
-            ChatResponse with execution result
-        """
-        # Create or get session
-        if not session_id:
-            session_id = self._create_session()
-        elif session_id not in self.sessions:
-            self.sessions[session_id] = AgentSession(session_id)
-        
-        session = self.sessions[session_id]
-        
-        try:
-            # Execute goal
-            result = await session.execute_goal(message)
+        @self.app.post("/api/v1/chat", response_model=ChatResponse)
+        @SpanDecorator("api.chat")
+        async def chat(
+            request: ChatRequest,
+            authorization: Optional[str] = Header(None),
+            background_tasks: BackgroundTasks = None,
+        ):
+            """Chat endpoint."""
+            
+            # Auth check
+            user_id = self._verify_auth(authorization)
+            
+            # Rate limit
+            if not self.rate_limiter.is_allowed(user_id):
+                raise HTTPException(status_code=429, detail="Too many requests")
+            
+            # Get or create session
+            session_id = request.session_id or str(uuid.uuid4())
+            if session_id not in self.sessions:
+                self.sessions[session_id] = AgentSession(session_id, user_id)
+            
+            session = self.sessions[session_id]
+            
+            # Execute
+            result = await session.execute_goal(request.message)
             
             return ChatResponse(
                 session_id=session_id,
-                message=result["message"],
-                status="completed" if result["success"] else "error",
+                message=request.message,
+                status=result.get("status", "completed"),
                 result=result.get("result"),
                 error=result.get("error"),
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.utcnow().isoformat(),
             )
         
-        except Exception as e:
-            return ChatResponse(
-                session_id=session_id,
-                message=f"Error: {str(e)}",
-                status="error",
-                error=str(e),
-                timestamp=datetime.now().isoformat()
-            )
-    
-    def _create_session(self) -> str:
-        """Create new session and return session ID."""
-        self.session_counter += 1
-        session_id = f"session_{self.session_counter}_{datetime.now().timestamp()}"
-        self.sessions[session_id] = AgentSession(session_id)
-        return session_id
-    
-    def run_server(self, debug: bool = False):
-        """
-        Start HTTP server for Continue.dev integration.
+        @self.app.websocket("/api/v1/chat-stream")
+        async def chat_stream(websocket: WebSocket):
+            """WebSocket for streaming responses."""
+            
+            await websocket.accept()
+            session_id = str(uuid.uuid4())
+            
+            try:
+                while True:
+                    # Receive message
+                    data = await websocket.receive_json()
+                    message = data.get("message")
+                    
+                    if not message:
+                        continue
+                    
+                    # Create session
+                    session = AgentSession(session_id, "ws_user")
+                    self.sessions[session_id] = session
+                    
+                    # Stream execution
+                    await websocket.send_json({
+                        "status": "thinking",
+                        "session_id": session_id,
+                    })
+                    
+                    result = await session.execute_goal(message)
+                    
+                    await websocket.send_json({
+                        "status": "completed",
+                        "result": result,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+            
+            except Exception as e:
+                self.logger.error(f"WebSocket error: {e}")
+                await websocket.close(code=1011, reason=str(e))
         
-        Args:
-            debug: Enable debug mode
-        """
-        if not FASTAPI_AVAILABLE:
-            print("❌ FastAPI not installed. Install with:")
-            print("   pip install fastapi uvicorn")
-            return
+        @self.app.post("/api/v1/completions", response_model=CompletionResponse)
+        async def get_completions(
+            request: CompletionRequest,
+            authorization: Optional[str] = Header(None),
+        ):
+            """
+            Inline completions for Continue.dev and other IDE integrations.
+            
+            Provides real-time code suggestions based on current context.
+            Uses a configurable model (OLLAMA_COMPLETION_MODEL) that can be
+            different from the main model for faster responses.
+            """
+            
+            user_id = self._verify_auth(authorization)
+            
+            if not self.rate_limiter.is_allowed(user_id):
+                raise HTTPException(status_code=429, detail="Too many requests")
+            
+            # Verificar se completação está habilitada
+            if not ENABLE_INLINE_COMPLETION:
+                return CompletionResponse(
+                    completions=[],
+                    scores=[],
+                )
+            
+            try:
+                # Chamar serviço de completação em thread separada
+                # para não bloquear o event loop
+                suggestions = await asyncio.to_thread(
+                    get_code_completions,
+                    file_path=request.file_path,
+                    content=request.content,
+                    line=request.line,
+                    column=request.column,
+                    prefix=request.prefix or "",
+                    num_suggestions=COMPLETION_MAX_SUGGESTIONS,
+                )
+                
+                if not suggestions:
+                    return CompletionResponse(
+                        completions=[],
+                        scores=[],
+                    )
+                
+                return CompletionResponse(
+                    completions=[s["completion"] for s in suggestions],
+                    scores=[s["score"] for s in suggestions],
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Completion error: {e}")
+                return CompletionResponse(
+                    completions=[],
+                    scores=[],
+                )
         
-        print(f"🚀 Starting Chat Interface at http://{self.host}:{self.port}")
-        print(f"📚 API Docs at http://{self.host}:{self.port}/docs")
-        print(f"🔌 Continue.dev Integration: ws://{self.host}:{self.port}/api/chat")
+        @self.app.get("/api/v1/sessions/{session_id}")
+        async def get_session(
+            session_id: str,
+            authorization: Optional[str] = Header(None),
+        ):
+            """Get session info."""
+            
+            user_id = self._verify_auth(authorization)
+            
+            if session_id not in self.sessions:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            session = self.sessions[session_id]
+            
+            if session.user_id != user_id:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            return session.to_dict()
+        
+        @self.app.get("/api/v1/health")
+        async def health():
+            """Health check."""
+            
+            return {
+                "status": "ok",
+                "timestamp": datetime.utcnow().isoformat(),
+                "sessions": len(self.sessions),
+            }
+    
+    def _verify_auth(self, authorization: Optional[str]) -> str:
+        """Verify authentication header."""
+        
+        if not self.enable_auth:
+            return "anonymous"
+        
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Missing authorization")
+        
+        # Parse Bearer token
+        parts = authorization.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Invalid authorization header")
+        
+        token = parts[1]
+        user_id = self.token_manager.verify_token(token)
+        
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        return user_id
+    
+    def run(self, reload: bool = False):
+        """Run server."""
+        
+        self.logger.info(f"Starting Continue.dev server on {self.host}:{self.port}")
         
         uvicorn.run(
             self.app,
             host=self.host,
             port=self.port,
-            reload=debug,
-            log_level="info" if debug else "error"
+            reload=reload,
+            log_level="info",
         )
+
+
+# ============================================================
+# INITIALIZATION
+# ============================================================
+
+def create_server(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    enable_auth: bool = True,
+) -> ContinueDEVServer:
+    """Create and return server instance."""
     
-    def save_session(self, session_id: str, filepath: Optional[str] = None) -> str:
-        """
-        Save session to file for persistence.
-        
-        Args:
-            session_id: Session to save
-            filepath: Output file (default: sessions/{session_id}.json)
-        
-        Returns:
-            Path to saved file
-        """
-        session = self.sessions.get(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-        
-        if not filepath:
-            Path("sessions").mkdir(exist_ok=True)
-            filepath = f"sessions/{session_id}.json"
-        
-        with open(filepath, 'w') as f:
-            json.dump(session.to_dict(), f, indent=2)
-        
-        return filepath
-    
-    def load_session(self, filepath: str) -> str:
-        """
-        Load session from file.
-        
-        Args:
-            filepath: Path to session file
-        
-        Returns:
-            Session ID
-        """
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-        
-        session_id = data["session_id"]
-        session = AgentSession(session_id, SessionMode(data["mode"]))
-        
-        # Restore messages
-        for msg_data in data.get("messages", []):
-            session.add_message(msg_data["role"], msg_data["content"])
-        
-        self.sessions[session_id] = session
-        return session_id
+    return ContinueDEVServer(
+        host=host,
+        port=port,
+        enable_auth=enable_auth,
+    )
 
 
-# Convenience functions for batch mode (existing functionality)
-
-def run_batch(goal: str) -> Dict[str, Any]:
-    """
-    Run agent in batch mode (existing single-execution mode).
-    
-    Args:
-        goal: Task to execute
-    
-    Returns:
-        Execution result
-    """
-    runner = AgentRunner()
-    return runner.run(goal)
-
-
-def run_interactive(host: str = "127.0.0.1", port: int = 8000):
-    """
-    Run agent in interactive mode (new HTTP API).
-    
-    Args:
-        host: Server host
-        port: Server port
-    """
-    interface = ChatInterface(host, port)
-    interface.run_server()
-
-
-# Export for use
-__all__ = [
-    "ChatInterface",
-    "AgentSession",
-    "ChatMessage",
-    "ChatRequest",
-    "ChatResponse",
-    "run_batch",
-    "run_interactive"
-]
+if __name__ == "__main__":
+    # Run with: python -m core.chat_interface_v2
+    server = create_server()
+    server.run(reload=True)

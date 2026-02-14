@@ -15,11 +15,11 @@
 **Status**: CONCLUÍDO
 
 #### Arquivos Atualizados
-- `agents/executor.py`: Convertido para wrapper que chama `ExecutorAgentV2`
+- `agents/executor.py`: Convertido para wrapper que chama `ExecutorAgent`
   - Mantém interface compatível com AgentRunner
   - Redireciona para implementação otimizada (parallelização, DAG)
   
-- `agents/reviewer.py`: Convertido para wrapper que chama `ReviewerAgentV2`
+- `agents/reviewer.py`: Convertido para wrapper que chama `ReviewerAgent`
   - Mantém interface compatível com AgentRunner
   - Redireciona para análise com 6 critérios
 
@@ -76,8 +76,8 @@ Python version: 3.11
 Compilação:
   - agents/executor.py: OK
   - agents/reviewer.py: OK
-  - agents/executor_v2.py: OK
-  - agents/reviewer_v2.py: OK
+  - agents/executor.py: OK
+  - agents/reviewer.py: OK
   - core/llm.py: OK
   - core/agent_runner.py: OK
   - core/observability.py: OK
@@ -90,9 +90,9 @@ Compilação:
 
 ```
 Test 1: from agents.executor import ExecutorAgent
-Result: OK - Wrapper loads ExecutorAgentV2
+Result: OK - Wrapper loads ExecutorAgent
 Test 2: from agents.reviewer import ReviewerAgent
-Result: OK - Wrapper loads ReviewerAgentV2
+Result: OK - Wrapper loads ReviewerAgent
 Test 3: ExecutorAgent() instantiation
 Result: OK - Uses v2 implementation
 Test 4: ReviewerAgent() instantiation
@@ -117,8 +117,8 @@ Result: OK - Uses v2 implementation
 ### Arquivos Renomeados/Migrados: 0
 
 ### Arquivos Atualizados: 5
-1. `agents/executor.py` - Wrapper para ExecutorAgentV2
-2. `agents/reviewer.py` - Wrapper para ReviewerAgentV2
+1. `agents/executor.py` - Wrapper para ExecutorAgent
+2. `agents/reviewer.py` - Wrapper para ReviewerAgent
 3. `core/__init__.py` - Removido import circular
 4. `vector_store/__init__.py` - Import opcional de chromadb
 5. `agents/memory.py` - Import opcional de ChromaDBStore
@@ -134,12 +134,12 @@ Result: OK - Uses v2 implementation
 ### Curto Prazo (Próxima Release)
 - [ ] Executar `pytest tests/` completo quando dependências disponíveis
 - [ ] Adicionar tests especificamente para wrappers v1→v2
-- [ ] Documentar em QUICKSTART.md: "Usar ExecutorAgentV2 para novo código"
+- [ ] Documentar em QUICKSTART.md: "Usar ExecutorAgent para novo código"
 
 ### Médio Prazo
 - [ ] Deprecar exports v1 de agents/__init__.py em v2.0
 - [ ] Mover ChromaDB imports para lazy_loader pattern (PEP 562)
-- [ ] Adicionar type hints para executorv2.execute() e reviewer_v2.review()
+- [ ] Adicionar type hints para executorv2.execute() e reviewer.review()
 
 ### Longo Prazo
 - [ ] Remover completamente v1 (agents/executor.py, agents/reviewer.py)

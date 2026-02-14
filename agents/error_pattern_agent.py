@@ -20,7 +20,7 @@ import hashlib
 from pathlib import Path
 
 from core.models import ErrorPattern, ErrorSolution, PatternAnalysis
-from agents.memory import MemoryAgent
+from agents.memory_agent import MemoryAgent
 
 
 class ErrorPatternAgent:

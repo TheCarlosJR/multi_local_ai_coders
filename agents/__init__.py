@@ -2,14 +2,14 @@
 Agents package - agentes IA autônomos
 """
 
-from .planner import PlannerAgent
-from .executor_v2 import ExecutorAgentV2
-from .reviewer_v2 import ReviewerAgentV2
-from .memory import MemoryAgent
+from .planner_agent import PlannerAgent
+from .executor_agent import ExecutorAgent
+from .reviewer_agent import ReviewerAgent
+from .memory_agent import MemoryAgent
 
 __all__ = [
     "PlannerAgent",
-    "ExecutorAgentV2",
-    "ReviewerAgentV2",
+    "ExecutorAgent",
+    "ReviewerAgent",
     "MemoryAgent",
 ]

@@ -198,31 +198,31 @@ After (Enterprise Edition)
 
 ```
 core/
-  ├─ language_registry.py       [NEW] Language detection & config
-  ├─ ast_parser.py              [NEW] Unified AST parsing
-  ├─ language_server.py         [NEW] LSP abstraction
-  ├─ diagnostics_engine.py      [NEW] Unified diagnostics
-  ├─ observability.py           [NEW] OpenTelemetry setup
-  ├─ structured_logger.py       [NEW] Structured logging
-  ├─ context_manager.py         [NEW] Token budget management
-  ├─ semantic_compression.py    [NEW] LLM-based compression
-  ├─ project_analyzer.py        [NEW] Project understanding
-  ├─ knowledge_graph.py         [NEW] Semantic graph
-  ├─ chat_interface_v2.py       [NEW] Production Continue.dev API
-  ├─ server_config.py           [NEW] Server configuration
-  └─ llm.py                     [UPDATED] Added exponential backoff
+  ├─ language_registry.py          [NEW] Language detection & config
+  ├─ ast_parser.py                 [NEW] Unified AST parsing
+  ├─ language_server.py            [NEW] LSP abstraction
+  ├─ diagnostics_engine.py         [NEW] Unified diagnostics
+  ├─ observability.py              [NEW] OpenTelemetry setup
+  ├─ structured_logger.py          [NEW] Structured logging
+  ├─ context_manager.py            [NEW] Token budget management
+  ├─ semantic_compression.py       [NEW] LLM-based compression
+  ├─ project_analyzer.py           [NEW] Project understanding
+  ├─ knowledge_graph.py            [NEW] Semantic graph
+  ├─ chat_interface_v2.py          [NEW] Production Continue.dev API
+  ├─ server_config.py              [NEW] Server configuration
+  └─ llm.py                        [UPDATED] Added exponential backoff
 
 agents/
-  ├─ executor_v2.py            [NEW] Parallel executor
-  ├─ reviewer_v2.py            [NEW] Multi-criteria review
-  └─ executor.py               [OLD] Preserved for compatibility
+  ├─ executor.py                   [NEW] Parallel executor
+  ├─ reviewer.py                   [NEW] Multi-criteria review
+  └─ executor.py                   [OLD] Preserved for compatibility
 
 tools/
   ├─ language_diagnostics_tool.py [NEW] Diagnostic runners
 
-run_server.py                    [NEW] Server startup script
-ENTERPRISE_GUIDE.md             [NEW] Complete documentation
-QUICKSTART.md                   [NEW] This file
+run_server.py                      [NEW] Server startup script
+ENTERPRISE_GUIDE.md                [NEW] Complete documentation
+QUICKSTART.md                      [NEW] This file
 ```
 
 # ============================================================

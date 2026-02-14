@@ -157,7 +157,7 @@ Generate search keywords. Return JSON with "keywords" as list of strings.
             
             return keywords
             
-        except:
+        except Exception:
             # Em caso de erro, usar query original
             return query
     

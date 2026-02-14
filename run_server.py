@@ -12,7 +12,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from core.chat_interface_v2 import ContinueDEVServer
+from core.chat_interface import ContinueDEVServer
 from core.server_config import ServerConfig, ACTIVE_CONFIG
 from core.structured_logger import StructuredLogger
 

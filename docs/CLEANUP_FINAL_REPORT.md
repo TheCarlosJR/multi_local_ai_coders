@@ -73,7 +73,7 @@ Root:
 - server_config.py
 
 **Agents (12 módulos)** - Apenas v2:
-- executor_v2.py, reviewer_v2.py
+- executor.py, reviewer.py
 - planner.py, memory.py
 - ci_cd_agent.py, type_checker_agent.py
 - ast_refactorer_agent.py, test_agent.py
@@ -132,8 +132,8 @@ multi_local_ai_coders/
 ├── pytest.ini
 │
 ├── agents/                      # 12 módulos v2
-│   ├── executor_v2.py          # Parallelização
-│   ├── reviewer_v2.py           # 6-critérios
+│   ├── executor.py          # Parallelização
+│   ├── reviewer.py           # 6-critérios
 │   ├── planner.py, memory.py, etc.
 │   └── __init__.py
 │
@@ -172,8 +172,8 @@ multi_local_ai_coders/
    - Todos os tipos corretos
 
 ✅ V2 Migration Validation
-   - ExecutorAgentV2 importado em agent_runner.py
-   - ReviewerAgentV2 importado em agent_runner.py
+   - ExecutorAgent importado em agent_runner.py
+   - ReviewerAgent importado em agent_runner.py
    - Ambos exportados de agents/__init__.py
    - Nenhum v1 wrapper restante
 
@@ -201,7 +201,7 @@ git commit -m "refactor: remove obsolete docs and cache files
 - Delete outdated docs: files.md, implementation.md, PHASES_8_11_SUMMARY.md, structure.md
 - Remove .pytest_cache and __pycache__ from all directories
 - Keep only relevant documentation: ENTERPRISE_GUIDE, QUICKSTART, IMPLEMENTATION_SUMMARY
-- Update imports to use only v2 agents (ExecutorAgentV2, ReviewerAgentV2)
+- Update imports to use only v2 agents (ExecutorAgent, ReviewerAgent)
 - Verify: 29 modules, 5 essential docs, zero cache files"
 ```
 
