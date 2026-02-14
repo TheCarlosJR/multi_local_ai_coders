@@ -221,3 +221,216 @@ def call_llm_stream(
     except Exception as e:
         logger.error(f"Erro em stream: {e}")
         raise
+
+
+# ============================================================
+# INLINE CODE COMPLETION
+# ============================================================
+
+# Import inline completion configs (lazy to avoid circular import)
+def _get_completion_config():
+    """Get completion configuration lazily."""
+    from core.config import (
+        OLLAMA_COMPLETION_MODEL,
+        COMPLETION_TEMPERATURE,
+        COMPLETION_MAX_TOKENS,
+    )
+    return OLLAMA_COMPLETION_MODEL, COMPLETION_TEMPERATURE, COMPLETION_MAX_TOKENS
+
+
+def get_code_completions(
+    file_path: str,
+    content: str,
+    line: int,
+    column: int,
+    prefix: str = "",
+    num_suggestions: int = 3,
+) -> list:
+    """
+    Gera completações de código inline para IDE.
+    
+    Args:
+        file_path: Caminho do arquivo sendo editado
+        content: Conteúdo completo do arquivo
+        line: Número da linha atual (1-indexed)
+        column: Posição da coluna
+        prefix: Texto já digitado na linha atual
+        num_suggestions: Número de sugestões a retornar
+    
+    Returns:
+        Lista de dicts com 'completion' e 'score'
+    """
+    
+    completion_model, completion_temp, max_tokens = _get_completion_config()
+    
+    # Extrair contexto relevante (linhas anteriores para contexto)
+    lines = content.split('\n')
+    
+    # Pegar 20 linhas anteriores como contexto (ou menos se arquivo menor)
+    start_line = max(0, line - 21)
+    context_lines = lines[start_line:line]
+    
+    # Linha atual até o cursor
+    current_line = lines[line - 1][:column] if line <= len(lines) else ""
+    
+    # Montar contexto
+    context = '\n'.join(context_lines)
+    if current_line:
+        context += '\n' + current_line
+    
+    # Detectar linguagem pela extensão
+    extension = file_path.split('.')[-1] if '.' in file_path else 'txt'
+    lang_map = {
+        'py': 'Python',
+        'js': 'JavaScript', 
+        'ts': 'TypeScript',
+        'java': 'Java',
+        'go': 'Go',
+        'rs': 'Rust',
+        'cpp': 'C++',
+        'c': 'C',
+        'rb': 'Ruby',
+        'php': 'PHP',
+        'cs': 'C#',
+        'kt': 'Kotlin',
+        'sh': 'Shell',
+    }
+    language = lang_map.get(extension, extension.upper())
+    
+    # Prompt otimizado para completação
+    completion_prompt = f"""Complete the following {language} code. 
+Return ONLY the code that should come next (no explanations, no markdown).
+Continue naturally from where the code ends.
+
+```{extension}
+{context}
+```
+
+Complete the next 1-3 lines of code:"""
+
+    system_prompt = """You are a code completion engine. 
+Rules:
+- Return ONLY code, no explanations
+- No markdown formatting (no ```)
+- Complete naturally based on context
+- Keep completions short (1-3 lines max)
+- Match the existing code style"""
+
+    try:
+        # Usar modelo de completação (pode ser diferente do principal)
+        response = ollama.chat(
+            model=completion_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": completion_prompt},
+            ],
+            options={
+                "temperature": completion_temp,
+                "num_predict": max_tokens,
+            },
+        )
+        
+        completion_text = response["message"]["content"].strip()
+        
+        # Limpar resposta (remover markdown se presente)
+        completion_text = _clean_completion(completion_text, extension)
+        
+        # Gerar múltiplas sugestões com pequena variação de temperatura
+        suggestions = [
+            {"completion": completion_text, "score": 0.9}
+        ]
+        
+        # Se precisar de mais sugestões, chamar novamente com temperatura maior
+        if num_suggestions > 1:
+            for i in range(min(num_suggestions - 1, 2)):
+                try:
+                    alt_response = ollama.chat(
+                        model=completion_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": completion_prompt},
+                        ],
+                        options={
+                            "temperature": completion_temp + 0.1 * (i + 1),
+                            "num_predict": max_tokens,
+                        },
+                    )
+                    alt_text = alt_response["message"]["content"].strip()
+                    alt_text = _clean_completion(alt_text, extension)
+                    
+                    # Evitar duplicatas
+                    if alt_text != completion_text:
+                        suggestions.append({
+                            "completion": alt_text,
+                            "score": 0.7 - (0.1 * i)
+                        })
+                except Exception:
+                    pass  # Ignorar falhas em sugestões alternativas
+        
+        logger.debug(f"Completações geradas: {len(suggestions)}")
+        return suggestions
+        
+    except ConnectionError as e:
+        logger.warning(f"Completação falhou (conexão): {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Erro em completação: {e}")
+        return []
+
+
+def _clean_completion(text: str, extension: str) -> str:
+    """
+    Remove formatação markdown e limpa a completação.
+    
+    Args:
+        text: Texto da completação
+        extension: Extensão do arquivo
+    
+    Returns:
+        Texto limpo
+    """
+    # Remover markdown code blocks
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text = parts[1]
+            # Remover identificador de linguagem na primeira linha
+            if '\n' in text:
+                first_line = text.split('\n')[0].strip().lower()
+                # Lista de identificadores de linguagem comuns em markdown
+                lang_ids = ['python', 'py', 'javascript', 'js', 'typescript', 'ts', 
+                            'java', 'go', 'rust', 'cpp', 'c', 'ruby', 'php', 
+                            'html', 'css', 'sql', 'bash', 'sh', 'json', 'yaml', 'yml']
+                if first_line in lang_ids or first_line == extension.lower():
+                    text = '\n'.join(text.split('\n')[1:])
+            elif text.strip() == extension or text.strip() == extension.upper():
+                # Caso especial: apenas o nome da linguagem sem código
+                text = ''
+    
+    if text.endswith("```"):
+        text = text.rsplit("```", 1)[0]
+    
+    return text.strip()
+
+
+def get_single_completion(
+    file_path: str,
+    content: str, 
+    line: int,
+    column: int,
+) -> str:
+    """
+    Versão simplificada que retorna apenas uma completação.
+    Útil para integração mais simples.
+    
+    Args:
+        file_path: Caminho do arquivo
+        content: Conteúdo do arquivo
+        line: Linha atual
+        column: Coluna atual
+    
+    Returns:
+        String com a completação ou vazio se falhar
+    """
+    suggestions = get_code_completions(file_path, content, line, column, num_suggestions=1)
+    return suggestions[0]["completion"] if suggestions else ""

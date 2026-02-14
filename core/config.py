@@ -46,6 +46,33 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen:14b")
 OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
 # ============================================================
+# INLINE COMPLETION (Continue.dev / IDE)
+# ============================================================
+
+# Modelo para completação inline (sugestões em tempo real)
+# Use modelo menor para respostas rápidas: qwen2.5-coder:1.5b, codellama:7b
+# Por padrão, usa o modelo principal (OLLAMA_MODEL)
+OLLAMA_COMPLETION_MODEL = os.getenv("OLLAMA_COMPLETION_MODEL", OLLAMA_MODEL)
+
+# Temperatura para completações (0.0 = determinístico, ideal para code completion)
+COMPLETION_TEMPERATURE = float(os.getenv("COMPLETION_TEMPERATURE", "0.1"))
+
+# Máximo de tokens na resposta de completação (limitar para velocidade)
+COMPLETION_MAX_TOKENS = int(os.getenv("COMPLETION_MAX_TOKENS", "150"))
+
+# Timeout para completações (deve ser curto para UX)
+COMPLETION_TIMEOUT = int(os.getenv("COMPLETION_TIMEOUT", "5"))
+
+# Número máximo de sugestões de completação
+COMPLETION_MAX_SUGGESTIONS = int(os.getenv("COMPLETION_MAX_SUGGESTIONS", "3"))
+
+# Ativar/desativar completação inline
+ENABLE_INLINE_COMPLETION = os.getenv("ENABLE_INLINE_COMPLETION", "true").lower() == "true"
+
+# Debounce em milissegundos (para evitar chamadas excessivas)
+COMPLETION_DEBOUNCE_MS = int(os.getenv("COMPLETION_DEBOUNCE_MS", "300"))
+
+# ============================================================
 # PARÂMETROS DO LLM
 # ============================================================
 
@@ -64,6 +91,12 @@ LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
 # Máximo de tentativas do Executor em caso de erro
 # Exemplo: se falhar, tenta recuperar erro e refaz (até N vezes)
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
+
+# Número de threads para execução paralela de steps
+EXECUTOR_MAX_WORKERS = int(os.getenv("EXECUTOR_MAX_WORKERS", "4"))
+
+# Timeout em segundos por step de execução
+EXECUTOR_STEP_TIMEOUT = int(os.getenv("EXECUTOR_STEP_TIMEOUT", "300"))
 
 # ============================================================
 # SISTEMA DE ARQUIVOS
@@ -204,6 +237,21 @@ if LOG_TO_FILE:
         )
     )
     logger.addHandler(file_handler)
+
+# ============================================================
+# API / AUTENTICAÇÃO
+# ============================================================
+
+# Chave de API padrão para autenticação no servidor Continue.dev
+# IMPORTANTE: Mude este valor em produção!
+DEFAULT_API_KEY = os.getenv("DEFAULT_API_KEY", "dev-api-key-change-in-production")
+
+# Secret key para JWT tokens
+# IMPORTANTE: Gere uma chave segura em produção: python -c "import secrets; print(secrets.token_hex(32))"
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret-change-in-production")
+
+# Tempo de expiração do token JWT em horas
+JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
 
 # ============================================================
 # SEGURANÇA - COMANDOS PROIBIDOS

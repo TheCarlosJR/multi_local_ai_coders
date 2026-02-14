@@ -349,6 +349,54 @@ FORBIDDEN_COMMANDS=rm -rf,sudo,su,format,diskpart,drop database,delete from
 # Criar whitelist customizada em config.py se necessário
 ```
 
+### 🔌 Inline Completion (IDE Integration)
+
+Sugestões de código em tempo real para VS Code com [Continue.dev](https://continue.dev).
+
+#### Configuração
+
+```ini
+# .env - Completação Inline
+ENABLE_INLINE_COMPLETION=true
+OLLAMA_COMPLETION_MODEL=qwen2.5-coder:1.5b  # Modelo menor = resposta rápida
+COMPLETION_TEMPERATURE=0.1                   # Mais determinístico
+COMPLETION_MAX_TOKENS=150                    # Limitar para velocidade
+COMPLETION_TIMEOUT=5                         # Segundos (UX)
+COMPLETION_MAX_SUGGESTIONS=3                 # Sugestões por request
+COMPLETION_DEBOUNCE_MS=300                   # Evitar chamadas excessivas
+```
+
+#### Endpoint API
+
+```http
+POST /api/v1/completions
+Content-Type: application/json
+
+{
+  "file_path": "src/main.py",
+  "content": "def calculate_sum(a, b):\n    ",
+  "line": 2,
+  "column": 4
+}
+```
+
+**Response:**
+```json
+{
+  "completions": ["return a + b"],
+  "model": "qwen2.5-coder:1.5b",
+  "timing_ms": 120
+}
+```
+
+#### Iniciar Servidor
+
+```bash
+python run_server.py
+# Servidor em http://127.0.0.1:8000
+# Docs: http://127.0.0.1:8000/docs
+```
+
 ---
 
 ## 💡 Exemplos Práticos Completos
