@@ -24,10 +24,10 @@ import logging
 from typing import Optional, Dict, Any
 
 from agents.ci_cd_agent import CICDAgent
-from agents.planner import PlannerAgent
-from agents.executor_v2 import ExecutorAgentV2
-from agents.reviewer_v2 import ReviewerAgentV2
-from agents.memory import MemoryAgent
+from agents.planner_agent import PlannerAgent
+from agents.executor_agent import ExecutorAgent
+from agents.reviewer_agent import ReviewerAgent
+from agents.memory_agent import MemoryAgent
 from core.models import (
     PlanResponse,
     ExecutorResponse,
@@ -58,8 +58,8 @@ class AgentRunner:
         
         self.ci_cd = CICDAgent()
         self.planner = PlannerAgent()
-        self.executor = ExecutorAgentV2()
-        self.reviewer = ReviewerAgentV2()
+        self.executor = ExecutorAgent()
+        self.reviewer = ReviewerAgent()
         self.memory = MemoryAgent()
         
         self.logger = logging.getLogger(__name__)
@@ -294,7 +294,7 @@ Confidence: {review.confidence:.2%}
             # Extrair diff para contexto
             try:
                 diff = git_tool.git_diff()
-            except:
+            except Exception:
                 diff = "(diff não disponível)"
             
             # Gerar mensagem via LLM

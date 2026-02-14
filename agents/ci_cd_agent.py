@@ -424,13 +424,13 @@ class CICDAgent:
             if "passed" in summary_line:
                 try:
                     passed = int(summary_line.split("passed")[0].strip().split()[-1])
-                except:
+                except (ValueError, IndexError):
                     pass
             
             if "failed" in summary_line:
                 try:
                     failed = int(summary_line.split("failed")[0].strip().split()[-1])
-                except:
+                except (ValueError, IndexError):
                     pass
             
             return TestExecutionResult(

@@ -396,7 +396,7 @@ class TypeCheckerAgent:
         try:
             subprocess.run(["tsc", "--version"], capture_output=True, timeout=5)
             langs.append("TypeScript (tsc)")
-        except:
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             pass
         
         return langs

@@ -375,7 +375,7 @@ class StaticAnalysisAgent:
                     timeout=5
                 )
                 tools.append(tool)
-            except:
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
                 pass
         
         return tools

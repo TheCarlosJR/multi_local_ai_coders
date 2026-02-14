@@ -74,7 +74,7 @@ class TestAgent:
             try:
                 subprocess.run(["pytest", "--version"], capture_output=True, timeout=5)
                 return "pytest"
-            except:
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
                 pass
             return "unittest"
         
@@ -103,7 +103,7 @@ class TestAgent:
             use_coverage = True
             try:
                 subprocess.run(["coverage", "--version"], capture_output=True, timeout=5)
-            except:
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
                 use_coverage = False
             
             if use_coverage:

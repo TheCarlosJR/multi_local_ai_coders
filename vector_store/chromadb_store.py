@@ -342,7 +342,7 @@ class ChromaDBStore:
                             created_at = datetime.fromisoformat(created_at_str)
                             if created_at < cutoff_date:
                                 ids_to_remove.append(doc_id)
-                        except:
+                        except (ValueError, TypeError):
                             pass
             
             if ids_to_remove:

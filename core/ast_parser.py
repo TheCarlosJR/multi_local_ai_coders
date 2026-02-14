@@ -285,7 +285,7 @@ class ASTParser:
         """Extract text content from node."""
         try:
             return node.text.decode('utf-8')
-        except:
+        except (UnicodeDecodeError, AttributeError):
             return ""
     
     @staticmethod
@@ -293,5 +293,5 @@ class ASTParser:
         """Count lines of code."""
         try:
             return len(file_path.read_text(encoding='utf-8').splitlines())
-        except:
+        except (OSError, UnicodeDecodeError):
             return 0
